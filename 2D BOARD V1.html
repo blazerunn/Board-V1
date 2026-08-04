@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluid 2D Board</title>
+    <style>
+        :root {
+            /* Whiteboard (Light) Theme */
+            --bg-color: #f4f5f7;
+            --text-color: #1d1d1f;
+            --ui-bg: rgba(255, 255, 255, 0.6);
+            --ui-border: rgba(255, 255, 255, 0.4);
+            --note-bg: rgba(255, 255, 255, 0.85);
+            --line-color: rgba(0, 0, 0, 0.2);
+            --shadow: 0 10px 30px rgba(0,0,0,0.08);
+            --pattern: radial-gradient(#d1d1d1 1px, transparent 1px);
+        }
+
+        [data-theme="kara-tahta"] {
+            /* Blackboard (Dark) Theme - Deep Black */
+            --bg-color: #0a0a0c; 
+            --text-color: #e5e5ea; 
+            --ui-bg: rgba(15, 15, 18, 0.7); 
+            --ui-border: rgba(255, 255, 255, 0.08); 
+            --note-bg: rgba(22, 22, 26, 0.85); 
+            --line-color: rgba(255, 255, 255, 0.15); 
+            --shadow: 0 10px 40px rgba(0,0,0,0.9); 
+            --pattern: radial-gradient(#222226 1px, transparent 1px); 
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: var(--pattern);
+            background-size: 20px 20px;
+            color: var(--text-color);
+            overflow: hidden;
+            transition: background-color 0.5s ease, color 0.5s ease, background-image 0.5s ease;
+        }
+
+        /* Apple Style Floating Toolbar */
+        .toolbar {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 24px;
+            background: var(--ui-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--ui-border);
+            border-radius: 40px;
+            box-shadow: var(--shadow);
+            z-index: 1000;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            background: rgba(128, 128, 128, 0.1);
+            border-radius: 20px;
+            padding-left: 12px;
+            transition: background 0.2s;
+        }
+
+        .toolbar-group:hover {
+            background: rgba(128, 128, 128, 0.2);
+        }
+
+        button {
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 10px 15px;
+            border-radius: 20px;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: rgba(128, 128, 128, 0.15);
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        /* Circular Apple Style Color Pickers */
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            padding: 0;
+            background: transparent;
+            outline: none;
+        }
+        
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { 
+            border: 1.5px solid var(--ui-border); 
+            border-radius: 50%; 
+        }
+
+        /* Canvas Area and Draggable Elements */
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .node {
+            position: absolute;
+            width: 220px;
+            background: var(--note-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--ui-border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.2s ease, border-color 0.5s ease;
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .node:active {
+            cursor: grabbing;
+            transform: scale(1.02);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.25);
+            z-index: 100;
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .node-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .node-title {
+            outline: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: text;
+            border-radius: 4px;
+            padding: 2px 4px;
+            margin: -2px -4px;
+            transition: background 0.2s;
+            max-width: 110px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .node-title:focus {
+            background: rgba(128, 128, 128, 0.15);
+            white-space: normal;
+            overflow: visible;
+        }
+
+        .node-color-picker {
+            width: 20px;
+            height: 20px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .node-color-picker:hover {
+            transform: scale(1.15);
+        }
+
+        .delete-btn {
+            background: rgba(255, 59, 48, 0.15);
+            color: #ff3b30;
+            border: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, background 0.2s;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .delete-btn:hover {
+            background: #ff3b30;
+            color: #fff;
+            transform: scale(1.15);
+        }
+
+        .node-content {
+            outline: none;
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 60px;
+            cursor: text;
+        }
+
+        /* SVG Layer for Strings/Links */
+        #svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .string-line {
+            fill: none;
+            stroke-width: 3;
+            stroke-linecap: round;
+            transition: stroke 0.5s ease;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.8) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+    </style>
+</head>
+<body data-theme="beyaz-tahta">
+
+    <svg id="svg-layer"></svg>
+    <div id="canvas"></div>
+
+    <div class="toolbar">
+        <button onclick="addNote()">📝 Add Note</button>
+        
+        <div class="toolbar-group">
+            <input type="color" id="globalLineColor" value="#007aff" title="Choose String Color">
+            <button onclick="connectNodes()">🔗 Connect Strings</button>
+        </div>
+
+        <button onclick="toggleTheme()">🌗 Toggle Theme</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const svgLayer = document.getElementById('svg-layer');
+        const globalLineColorPicker = document.getElementById('globalLineColor');
+        
+        let nodes = [];
+        let links = [];
+        let isConnecting = false;
+        let connectStartNode = null;
+
+        let draggedElement = null;
+        let offsetX = 0, offsetY = 0;
+
+        // Toggle Theme
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            body.setAttribute('data-theme', currentTheme === 'beyaz-tahta' ? 'kara-tahta' : 'beyaz-tahta');
+        }
+
+        // Add New Note
+        function addNote() {
+            createNode("New Note", "You can type text here...");
+        }
+
+        // Create Node Logic
+        function createNode(title, contentHtml, defaultBgColor = null) {
+            const node = document.createElement('div');
+            node.className = 'node';
+            
+            // Random initial placement on screen
+            const x = Math.random() * (window.innerWidth - 300) + 50;
+            const y = Math.random() * (window.innerHeight - 300) + 50;
+            
+            node.style.left = `${x}px`;
+            node.style.top = `${y}px`;
+            node.id = 'node_' + Date.now();
+
+            node.innerHTML = `
+                <div class="node-header">
+                    <div class="node-title" contenteditable="true" spellcheck="false">${title}</div>
+                    <div class="node-actions">
+                        <input type="color" class="node-color-picker" value="#ffffff" title="Change Note Color">
+                        <button class="delete-btn" title="Delete Note">✕</button>
+                    </div>
+                </div>
+                <div class="node-content" contenteditable="true">${contentHtml}</div>
+            `;
+
+            // Apply custom background color if provided
+            if(defaultBgColor) {
+                node.style.backgroundColor = defaultBgColor;
+            }
+
+            // Color Picker Logic (Translates HEX to RGBA to preserve glassmorphism blur effect)
+            const colorPicker = node.querySelector('.node-color-picker');
+            colorPicker.addEventListener('input', (e) => {
+                const hex = e.target.value;
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                node.style.backgroundColor = `rgba(${r}, ${g}, ${b}, 0.85)`;
+            });
+
+            // Delete Note Logic
+            const deleteBtn = node.querySelector('.delete-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeNode(node);
+            });
+
+            node.addEventListener('mousedown', dragStart);
+            node.addEventListener('click', handleNodeClick);
+            
+            canvas.appendChild(node);
+            nodes.push(node);
+            return node;
+        }
+
+        // Remove Node and Clean Up Connected Links
+        function removeNode(node) {
+            links = links.filter(link => link.from !== node && link.to !== node);
+            node.remove();
+            nodes = nodes.filter(n => n !== node);
+            drawLinks();
+        }
+
+        // String Connecting Mode
+        function connectNodes() {
+            isConnecting = !isConnecting;
+            document.body.style.cursor = isConnecting ? 'crosshair' : 'default';
+            connectStartNode = null;
+        }
+
+        function handleNodeClick(e) {
+            if (!isConnecting) return;
+            
+            const clickedNode = e.currentTarget;
+            if (!connectStartNode) {
+                connectStartNode = clickedNode;
+                clickedNode.style.boxShadow = `0 0 0 3px ${globalLineColorPicker.value}`;
+            } else {
+                if (connectStartNode !== clickedNode) {
+                    links.push({ 
+                        from: connectStartNode, 
+                        to: clickedNode, 
+                        color: globalLineColorPicker.value 
+                    });
+                    drawLinks();
+                }
+                connectStartNode.style.boxShadow = '';
+                connectStartNode = null;
+                isConnecting = false;
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        // Drag & Drop Logic
+        function dragStart(e) {
+            // Prevent dragging if interacting with inputs, delete button, title, or editable content
+            if (isConnecting || e.target.classList.contains('node-content') || e.target.classList.contains('node-title') || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            
+            draggedElement = e.currentTarget;
+            const rect = draggedElement.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', dragEnd);
+        }
+
+        function drag(e) {
+            if (!draggedElement) return;
+            
+            const x = e.clientX - offsetX;
+            const y = e.clientY - offsetY;
+            
+            draggedElement.style.left = `${x}px`;
+            draggedElement.style.top = `${y}px`;
+            
+            requestAnimationFrame(drawLinks); // Update links dynamically during drag
+        }
+
+        function dragEnd() {
+            draggedElement = null;
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', dragEnd);
+        }
+
+        // Draw Links (SVG Paths with Gravity/Sag Effect)
+        function drawLinks() {
+            svgLayer.innerHTML = '';
+            links.forEach(link => {
+                const rect1 = link.from.getBoundingClientRect();
+                const rect2 = link.to.getBoundingClientRect();
+
+                const x1 = rect1.left + rect1.width / 2;
+                const y1 = rect1.top + rect1.height / 2;
+                const x2 = rect2.left + rect2.width / 2;
+                const y2 = rect2.top + rect2.height / 2;
+
+                const distance = Math.abs(x2 - x1);
+                const sag = Math.min(distance / 2, 150); 
+                
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                const d = `M ${x1} ${y1} C ${x1} ${y1 + sag}, ${x2} ${y2 + sag}, ${x2} ${y2}`;
+                
+                path.setAttribute('d', d);
+                path.setAttribute('class', 'string-line');
+                path.setAttribute('stroke', link.color || 'var(--line-color)');
+                
+                svgLayer.appendChild(path);
+            });
+        }
+
+        // Initialize with sample notes
+        window.onload = () => {
+            const n1 = createNode("Welcome", "Click the note title to edit it, or click the color picker on the right to customize its color.");
+            const n2 = createNode("Idea Hub", "Select a string color from the bottom menu, click 'Connect Strings', and click two notes to link them.");
+            
+            n1.style.left = '20%'; n1.style.top = '30%';
+            n2.style.left = '60%'; n2.style.top = '40%';
+            
+            links.push({ from: n1, to: n2, color: '#007aff' });
+            drawLinks();
+            
+            window.addEventListener('resize', drawLinks);
+        };
+    </script>
+</body>
+</html>
